@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PIS-1274 即時示波器 + 音量條 (WebSerial)</title>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-analytics.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyAQWG323BRncrLBJ6RKqnLuJs2QLp0t0p4",
+    authDomain: "esp32-b359f.firebaseapp.com",
+    projectId: "esp32-b359f",
+    storageBucket: "esp32-b359f.firebasestorage.app",
+    messagingSenderId: "967156924614",
+    appId: "1:967156924614:web:294adc2366da343c0317c7",
+    measurementId: "G-KE13GPQM9Q"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+</script>
+<style>
+  body { font-family: system-ui, -apple-system, "Microsoft JhengHei", "Noto Sans TC", sans-serif; margin: 12px; background:#f6f8fb; color:#222; }
+  header { display:flex; gap:12px; align-items:center; margin-bottom:10px; }
+  .btn { padding:8px 12px; border-radius:8px; border:1px solid #ccc; background:white; cursor:pointer; }
+  .btn.primary { background:#2563eb; color:white; border-color:#1e40af; }
+  .btn.warn { background:#f97316; color:white; border-color:#c2410c; }
+  .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  #main { display:grid; grid-template-columns: 1fr 220px; gap:12px; align-items:start; }
+  .card { background:white; border-radius:10px; padding:10px; box-shadow: 0 6px 18px rgba(20,20,40,0.06); }
+  #chartWrap { height:360px; }
+  #meter { width: 100%; height: 200px; display:flex; align-items:center; justify-content:center; }
+  #volBar { width: 60px; height: 160px; background:#eee; border-radius:8px; position:relative; overflow:hidden; }
+  #volFill { position:absolute; bottom:0; left:0; width:100%; height:0%; background:linear-gradient(180deg,#34d399,#60a5fa); display:flex; align-items:flex-end; justify-content:center; }
+  #volText { margin-top:10px; font-weight:600; }
+  .small { font-size:13px; color:#555; }
+  footer { margin-top:12px; font-size:12px; color:#666; }
+  #status { font-weight:600; color:#0b5; }
+</style>
+</head>
+<body>
+
+<header>
+  <h2 style="margin:0">PIS-1274 即時示波器 + 音量條</h2>
+  <div style="margin-left:8px" class="small">使用 Web Serial（Chrome / Edge）</div>
+</header>
+
+<div class="controls card" style="display:flex; gap:8px; align-items:center;">
+  <button id="connectBtn" class="btn primary">Connect</button>
+  <button id="disconnectBtn" class="btn" disabled>Disconnect</button>
+  <label class="small">Baud:
+    <select id="baudSelect" class="btn" style="padding:6px 8px;">
+      <option>115200</option>
+      <option>9600</option>
+      <option>19200</option>
+      <option>38400</option>
+      <option>57600</option>
+    </select>
+  </label>
+  <label class="small">Samples:
+    <input id="samples" type="number" min="50" max="5000" value="600" style="width:80px;padding:6px;border-radius:6px;border:1px solid #ccc" />
+  </label>
+  <button id="pauseBtn" class="btn">Pause</button>
+  <button id="exportBtn" class="btn">Export CSV</button>
+  <div style="margin-left:auto" class="small">狀態：<span id="status">未連接</span></div>
+</div>
+
+<section id="main">
+  <div class="card">
+    <div id="chartWrap">
+      <canvas id="waveChart"></canvas>
+    </div>
+    <div style="display:flex; gap:12px; margin-top:8px; align-items:center;">
+      <div class="small">RMS window: <input id="rmsWindow" type="number" min="1" max="500" value="30" style="width:70px;padding:4px;border-radius:6px;border:1px solid #ccc" /></div>
+      <div class="small">Threshold (V): <input id="threshold" type="number" step="0.01" value="1.0" style="width:70px;padding:4px;border-radius:6px;border:1px solid #ccc" /></div>
+      <div class="small" id="liveValues">最新：0.00 V  |  RMS：0.00 V</div>
+    </div>
+  </div>
+
+  <div class="card" style="display:flex; flex-direction:column; gap:12px; align-items:center;">
+    <div style="font-weight:700">音量條 (RMS)</div>
+    <div id="meter">
+      <div id="volBar">
+        <div id="volFill"></div>
+      </div>
+    </div>
+    <div id="volText">0.00 V</div>
+    <div style="width:100%;"><div class="small">說明：ESP32 請輸出每行一個電壓數字 (例如 0.523)</div></div>
+  </div>
+</section>
+
+<footer>
+  <div>如何使用：<br>
+  1) 將 ESP32 程式設定為 Serial.println(voltage) 並上傳；2) 在此頁按 Connect；3) 選 COM port（baud 115200）；4) 波形即時顯示。<br>
+  若無法連接，請確認使用 Chrome/Edge，且從 localhost 或 https 提供此檔案。</div>
+</footer>
+
+<script>
+(async () => {
+  // UI elements
+  const connectBtn = document.getElementById('connectBtn');
+  const disconnectBtn = document.getElementById('disconnectBtn');
+  const baudSelect = document.getElementById('baudSelect');
+  const statusEl = document.getElementById('status');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const samplesInput = document.getElementById('samples');
+  const rmsWindowInput = document.getElementById('rmsWindow');
+  const thresholdInput = document.getElementById('threshold');
+  const liveValues = document.getElementById('liveValues');
+  const exportBtn = document.getElementById('exportBtn');
+
+  const volFill = document.getElementById('volFill');
+  const volText = document.getElementById('volText');
+
+  let port = null;
+  let reader = null;
+  let keepReading = false;
+  let paused = false;
+
+  // Data buffer
+  let maxSamples = parseInt(samplesInput.value, 10);
+  let buffer = new Array(maxSamples).fill(0);
+  let timestamps = new Array(maxSamples).fill(0);
+
+  // Chart.js setup
+  const ctx = document.getElementById('waveChart').getContext('2d');
+  const chartData = {
+    labels: Array.from({length:buffer.length}, (_,i)=>i),
+    datasets: [{
+      label: 'Voltage (V)',
+      data: buffer.slice(),
+      borderWidth: 1,
+      pointRadius: 0,
+      borderColor: '#2563eb',
+      tension: 0.15,
+    }]
+  };
+  const waveChart = new Chart(ctx, {
+    type: 'line',
+    data: chartData,
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      elements: {line: {borderJoinStyle: 'round'}},
+      scales: {
+        x: { display: false },
+        y: { min: 0, max: 3.3 }
+      },
+      plugins: {
+        legend: { display: false }
+      }
+    }
+  });
+
+  function resizeBuffers(newLen) {
+    maxSamples = newLen;
+    const oldBuf = buffer.slice();
+    buffer = new Array(maxSamples).fill(0);
+    timestamps = new Array(maxSamples).fill(0);
+    // copy tail
+    for (let i=0;i<Math.min(oldBuf.length, buffer.length); i++){
+      buffer[buffer.length-1-i] = oldBuf[oldBuf.length-1-i];
+    }
+    waveChart.data.labels = Array.from({length:buffer.length}, (_,i)=>i);
+    waveChart.data.datasets[0].data = buffer.slice();
+    waveChart.update();
+  }
+
+  samplesInput.addEventListener('change', ()=> {
+    let v = parseInt(samplesInput.value,10) || 600;
+    if (v < 50) v = 50;
+    if (v > 5000) v = 5000;
+    samplesInput.value = v;
+    resizeBuffers(v);
+  });
+
+  // Helper: parse float from incoming line (be tolerant)
+  function parseLineToFloat(line) {
+    // remove non-numeric trailing chars, find first float-like token
+    const m = line.match(/[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?/);
+    if (m) {
+      return parseFloat(m[0]);
+    }
+    return NaN;
+  }
+
+  // RMS calculation over last N samples
+  function computeRMS(window) {
+    let sumSq = 0, count = 0;
+    for (let i=buffer.length - 1; i>=0 && count < window; i--, count++){
+      const v = buffer[i];
+      sumSq += v*v;
+    }
+    if (count === 0) return 0;
+    return Math.sqrt(sumSq / count);
+  }
+
+  // Update UI with a new sample
+  function pushSample(v){
+    buffer.shift();
+    buffer.push(v);
+    const rms = computeRMS(parseInt(rmsWindowInput.value,10) || 30);
+    // update chart dataset
+    waveChart.data.datasets[0].data = buffer.slice();
+    // update meter
+    const pct = Math.max(0, Math.min(1, rms / 3.3));
+    volFill.style.height = (pct * 100) + '%';
+    volText.textContent = rms.toFixed(3) + ' V';
+    // live info
+    liveValues.textContent = `最新：${v.toFixed(3)} V  |  RMS：${rms.toFixed(3)} V`;
+    // threshold style (if above threshold, flash color)
+    const thr = parseFloat(thresholdInput.value) || 1.0;
+    if (rms >= thr) {
+      volFill.style.background = 'linear-gradient(180deg,#fb7185,#ef4444)'; // red
+      statusEl.textContent = 'Sound ⚠'; statusEl.style.color = '#c0262e';
+    } else {
+      volFill.style.background = 'linear-gradient(180deg,#34d399,#60a5fa)'; // green-blue
+      statusEl.textContent = 'Connected'; statusEl.style.color = '#0b5';
+    }
+  }
+
+  // Export current buffer to CSV
+  exportBtn.addEventListener('click', () => {
+    let csv = 'sample_index,voltage_V\n';
+    for (let i=0;i<buffer.length;i++){
+      csv += `${i},${buffer[i]}\n`;
+    }
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'sound_data.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  // Pause
+  pauseBtn.addEventListener('click', ()=> {
+    paused = !paused;
+    pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+  });
+
+  // Connect / Disconnect
+  connectBtn.addEventListener('click', async () => {
+    try {
+      // request a port
+      port = await navigator.serial.requestPort();
+      await port.open({ baudRate: parseInt(baudSelect.value,10) });
+      statusEl.textContent = 'Connected'; statusEl.style.color = '#0b5';
+      disconnectBtn.disabled = false;
+      connectBtn.disabled = true;
+      keepReading = true;
+      readLoop();
+    } catch (e) {
+      console.error(e);
+      statusEl.textContent = '連接失敗';
+      statusEl.style.color = '#c0262e';
+    }
+  });
+
+  disconnectBtn.addEventListener('click', async () => {
+    keepReading = false;
+    paused = false;
+    pauseBtn.textContent = 'Pause';
+    try {
+      if (reader) { await reader.cancel(); reader = null; }
+      if (port) { await port.close(); port = null; }
+      statusEl.textContent = '已中斷'; statusEl.style.color = '#666';
+    } catch(e) {
+      console.warn(e);
+    }
+    disconnectBtn.disabled = true;
+    connectBtn.disabled = false;
+  });
+
+  // readLoop uses Streams API to get lines
+  async function readLoop() {
+    const textDecoder = new TextDecoderStream();
+    const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+    const lineReader = textDecoder.readable
+      .pipeThrough(new TransformStream(new LineBreakTransformer()))
+      .getReader();
+
+    reader = lineReader;
+    try {
+      while (keepReading) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) {
+          // value is one line (without newline)
+          const parsed = parseLineToFloat(value);
+          if (!isNaN(parsed)) {
+            if (!paused) pushSample(parsed);
+          }
+        }
+        // update chart every so often (Chart.js rerender)
+        waveChart.update('none');
+      }
+    } catch (err) {
+      console.error('readLoop error', err);
+      statusEl.textContent = '讀取錯誤';
+      statusEl.style.color = '#c0262e';
+    } finally {
+      try { reader.releaseLock(); } catch(e){}
+    }
+  }
+
+  // LineBreakTransformer: helper to split stream into lines
+  class LineBreakTransformer {
+    constructor() { this.container = ''; }
+    transform(chunk, controller) {
+      this.container += chunk;
+      const lines = this.container.split(/\r?\n/);
+      this.container = lines.pop();
+      lines.forEach(line => controller.enqueue(line));
+    }
+    flush(controller) {
+      if (this.container) controller.enqueue(this.container);
+    }
+  }
+
+  // Feature detect
+  if (!('serial' in navigator)) {
+    alert('你的瀏覽器不支援 Web Serial API。請使用最新的 Chrome 或 Edge，並將此檔案使用 localhost 或 https 提供。');
+  }
+
+  // nice: allow paste of "raw: 123.45" lines etc
+  // initialize chart with zeros
+  waveChart.update();
+
+})();
+</script>
+</body>
+</html>
