@@ -3,22 +3,24 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>PIS-1274 即時示波器 + 音量條 (WebSerial)</title>
+<title>PIS-1274 即時示波器 + 音量條 (Firebase Realtime DB)</title>
 
 <!-- Chart.js CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
 
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+<!-- Firebase (App + Database) - modular SDK -->
+<script type="module">
+  // Firebase modular imports (ES module)
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+  import { getDatabase, ref, onChildAdded, onValue } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
+
+  // ----------------------------
+  // TODO：把下面 firebaseConfig 改成你自己專案的設定
+  // ----------------------------
   const firebaseConfig = {
     apiKey: "AIzaSyAQWG323BRncrLBJ6RKqnLuJs2QLp0t0p4",
     authDomain: "esp32-b359f.firebaseapp.com",
+    databaseURL: "https://esp32-b359f-default-rtdb.firebaseio.com", // <- 請改成你的 Realtime DB URL
     projectId: "esp32-b359f",
     storageBucket: "esp32-b359f.firebasestorage.app",
     messagingSenderId: "967156924614",
@@ -26,16 +28,19 @@
     measurementId: "G-KE13GPQM9Q"
   };
 
-  // Initialize Firebase
+  // 初始化 Firebase App 與 Realtime Database
   const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
+  const db = getDatabase(app);
+
+  // 把 db 與部分 function 暴露到 window，讓下面非 module 碼也能使用（簡單處理）
+  window._FB = { db, ref, onChildAdded, onValue };
 </script>
+
 <style>
   body { font-family: system-ui, -apple-system, "Microsoft JhengHei", "Noto Sans TC", sans-serif; margin: 12px; background:#f6f8fb; color:#222; }
   header { display:flex; gap:12px; align-items:center; margin-bottom:10px; }
   .btn { padding:8px 12px; border-radius:8px; border:1px solid #ccc; background:white; cursor:pointer; }
   .btn.primary { background:#2563eb; color:white; border-color:#1e40af; }
-  .btn.warn { background:#f97316; color:white; border-color:#c2410c; }
   .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   #main { display:grid; grid-template-columns: 1fr 220px; gap:12px; align-items:start; }
   .card { background:white; border-radius:10px; padding:10px; box-shadow: 0 6px 18px rgba(20,20,40,0.06); }
@@ -53,27 +58,17 @@
 
 <header>
   <h2 style="margin:0">PIS-1274 即時示波器 + 音量條</h2>
-  <div style="margin-left:8px" class="small">使用 Web Serial（Chrome / Edge）</div>
+  <div style="margin-left:8px" class="small">改為 Firebase Realtime Database（ESP32 → 網路 → DB；瀏覽器直接監聽 DB）</div>
 </header>
 
+<!-- controls 保留（移除 Serial 相關按鈕） -->
 <div class="controls card" style="display:flex; gap:8px; align-items:center;">
-  <button id="connectBtn" class="btn primary">Connect</button>
-  <button id="disconnectBtn" class="btn" disabled>Disconnect</button>
-  <label class="small">Baud:
-    <select id="baudSelect" class="btn" style="padding:6px 8px;">
-      <option>115200</option>
-      <option>9600</option>
-      <option>19200</option>
-      <option>38400</option>
-      <option>57600</option>
-    </select>
-  </label>
   <label class="small">Samples:
     <input id="samples" type="number" min="50" max="5000" value="600" style="width:80px;padding:6px;border-radius:6px;border:1px solid #ccc" />
   </label>
   <button id="pauseBtn" class="btn">Pause</button>
   <button id="exportBtn" class="btn">Export CSV</button>
-  <div style="margin-left:auto" class="small">狀態：<span id="status">未連接</span></div>
+  <div style="margin-left:auto" class="small">狀態：<span id="status">未連線 DB</span></div>
 </div>
 
 <section id="main">
@@ -96,22 +91,19 @@
       </div>
     </div>
     <div id="volText">0.00 V</div>
-    <div style="width:100%;"><div class="small">說明：ESP32 請輸出每行一個電壓數字 (例如 0.523)</div></div>
+    <div style="width:100%;"><div class="small">說明：ESP32 請透過 HTTP POST 推資料到 Realtime DB 的 esp32/stream 路徑（每筆一個數值）</div></div>
   </div>
 </section>
 
 <footer>
   <div>如何使用：<br>
-  1) 將 ESP32 程式設定為 Serial.println(voltage) 並上傳；2) 在此頁按 Connect；3) 選 COM port（baud 115200）；4) 波形即時顯示。<br>
-  若無法連接，請確認使用 Chrome/Edge，且從 localhost 或 https 提供此檔案。</div>
+  1) 在 Firebase Console 建立 Realtime Database，修改規則（下方有範例）以便測試；<br>
+  2) 修改上方 firebaseConfig.databaseURL；3) 上傳 ESP32 程式（範例在下方）；4) 開啟本頁，會自動監聽 DB 的新資料並即時顯示。</div>
 </footer>
 
 <script>
 (async () => {
   // UI elements
-  const connectBtn = document.getElementById('connectBtn');
-  const disconnectBtn = document.getElementById('disconnectBtn');
-  const baudSelect = document.getElementById('baudSelect');
   const statusEl = document.getElementById('status');
   const pauseBtn = document.getElementById('pauseBtn');
   const samplesInput = document.getElementById('samples');
@@ -123,9 +115,6 @@
   const volFill = document.getElementById('volFill');
   const volText = document.getElementById('volText');
 
-  let port = null;
-  let reader = null;
-  let keepReading = false;
   let paused = false;
 
   // Data buffer
@@ -186,16 +175,6 @@
     resizeBuffers(v);
   });
 
-  // Helper: parse float from incoming line (be tolerant)
-  function parseLineToFloat(line) {
-    // remove non-numeric trailing chars, find first float-like token
-    const m = line.match(/[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?/);
-    if (m) {
-      return parseFloat(m[0]);
-    }
-    return NaN;
-  }
-
   // RMS calculation over last N samples
   function computeRMS(window) {
     let sumSq = 0, count = 0;
@@ -207,10 +186,14 @@
     return Math.sqrt(sumSq / count);
   }
 
-  // Update UI with a new sample
-  function pushSample(v){
+  // Update UI with a new sample (主要由 DB Listener 呼叫)
+  function pushSample(v, ts = Date.now()){
+    // shift & push
     buffer.shift();
     buffer.push(v);
+    timestamps.shift();
+    timestamps.push(ts);
+
     const rms = computeRMS(parseInt(rmsWindowInput.value,10) || 30);
     // update chart dataset
     waveChart.data.datasets[0].data = buffer.slice();
@@ -224,18 +207,18 @@
     const thr = parseFloat(thresholdInput.value) || 1.0;
     if (rms >= thr) {
       volFill.style.background = 'linear-gradient(180deg,#fb7185,#ef4444)'; // red
-      statusEl.textContent = 'Sound ⚠'; statusEl.style.color = '#c0262e';
+      statusEl.textContent = 'Alert'; statusEl.style.color = '#c0262e';
     } else {
       volFill.style.background = 'linear-gradient(180deg,#34d399,#60a5fa)'; // green-blue
-      statusEl.textContent = 'Connected'; statusEl.style.color = '#0b5';
+      statusEl.textContent = 'Listening'; statusEl.style.color = '#0b5';
     }
   }
 
   // Export current buffer to CSV
   exportBtn.addEventListener('click', () => {
-    let csv = 'sample_index,voltage_V\n';
+    let csv = 'sample_index,voltage_V,timestamp\n';
     for (let i=0;i<buffer.length;i++){
-      csv += `${i},${buffer[i]}\n`;
+      csv += `${i},${buffer[i]},${timestamps[i]}\n`;
     }
     const blob = new Blob([csv], {type:'text/csv'});
     const url = URL.createObjectURL(blob);
@@ -251,94 +234,52 @@
     pauseBtn.textContent = paused ? 'Resume' : 'Pause';
   });
 
-  // Connect / Disconnect
-  connectBtn.addEventListener('click', async () => {
-    try {
-      // request a port
-      port = await navigator.serial.requestPort();
-      await port.open({ baudRate: parseInt(baudSelect.value,10) });
-      statusEl.textContent = 'Connected'; statusEl.style.color = '#0b5';
-      disconnectBtn.disabled = false;
-      connectBtn.disabled = true;
-      keepReading = true;
-      readLoop();
-    } catch (e) {
-      console.error(e);
-      statusEl.textContent = '連接失敗';
-      statusEl.style.color = '#c0262e';
-    }
-  });
+  // Helper parse float (defensive)
+  function parseMaybeFloat(v) {
+    if (typeof v === 'number') return v;
+    const m = (''+v).match(/[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?/);
+    return m ? parseFloat(m[0]) : NaN;
+  }
 
-  disconnectBtn.addEventListener('click', async () => {
-    keepReading = false;
-    paused = false;
-    pauseBtn.textContent = 'Pause';
+  // -------------------------------
+  // Firebase DB Listener 部分（Realtime DB）
+  // 我們會監聽 /esp32/stream 的 child_added（新筆資料）
+  // -------------------------------
+  function startDatabaseListener() {
     try {
-      if (reader) { await reader.cancel(); reader = null; }
-      if (port) { await port.close(); port = null; }
-      statusEl.textContent = '已中斷'; statusEl.style.color = '#666';
-    } catch(e) {
-      console.warn(e);
-    }
-    disconnectBtn.disabled = true;
-    connectBtn.disabled = false;
-  });
-
-  // readLoop uses Streams API to get lines
-  async function readLoop() {
-    const textDecoder = new TextDecoderStream();
-    const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-    const lineReader = textDecoder.readable
-      .pipeThrough(new TransformStream(new LineBreakTransformer()))
-      .getReader();
-
-    reader = lineReader;
-    try {
-      while (keepReading) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value) {
-          // value is one line (without newline)
-          const parsed = parseLineToFloat(value);
-          if (!isNaN(parsed)) {
-            if (!paused) pushSample(parsed);
-          }
+      // 來自最上方 module 匯入，window._FB.db 已初始化
+      const { db, ref, onChildAdded } = window._FB;
+      const streamRef = ref(db, 'esp32/stream'); // 想要監聽的路徑
+      // child_added 當有新子節點加入時會被觸發（適合 streaming）
+      onChildAdded(streamRef, (snap) => {
+        const val = snap.val();
+        // 範例資料格式： { voltage: 0.523, ts: 169... }
+        const voltage = parseMaybeFloat(val?.voltage ?? val);
+        const ts = val?.ts ? Number(val.ts) : Date.now();
+        if (!isNaN(voltage)) {
+          if (!paused) pushSample(voltage, ts);
+          // 可選：自動刪除舊資料或限制數量（避免 DB 無限增長）
         }
-        // update chart every so often (Chart.js rerender)
+        // 每來一筆就更新 chart（Chart.js）
         waveChart.update('none');
-      }
-    } catch (err) {
-      console.error('readLoop error', err);
-      statusEl.textContent = '讀取錯誤';
+      });
+
+      // 可選：更新狀態顯示（檢查 DB 連線）
+      statusEl.textContent = 'Listening'; statusEl.style.color = '#0b5';
+    } catch (e) {
+      console.error('DB listener 啟動失敗', e);
+      statusEl.textContent = 'DB 監聽失敗';
       statusEl.style.color = '#c0262e';
-    } finally {
-      try { reader.releaseLock(); } catch(e){}
     }
   }
 
-  // LineBreakTransformer: helper to split stream into lines
-  class LineBreakTransformer {
-    constructor() { this.container = ''; }
-    transform(chunk, controller) {
-      this.container += chunk;
-      const lines = this.container.split(/\r?\n/);
-      this.container = lines.pop();
-      lines.forEach(line => controller.enqueue(line));
-    }
-    flush(controller) {
-      if (this.container) controller.enqueue(this.container);
-    }
-  }
-
-  // Feature detect
-  if (!('serial' in navigator)) {
-    alert('你的瀏覽器不支援 Web Serial API。請使用最新的 Chrome 或 Edge，並將此檔案使用 localhost 或 https 提供。');
-  }
-
-  // nice: allow paste of "raw: 123.45" lines etc
-  // initialize chart with zeros
+  // 初始化圖表畫面
   waveChart.update();
 
+  // 啟動 DB 監聽
+  startDatabaseListener();
+
+  // 完成
 })();
 </script>
 </body>
