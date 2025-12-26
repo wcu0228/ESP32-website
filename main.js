@@ -114,44 +114,89 @@ function tryPushData() {
 // ===== Web Serial 讀取主迴圈 =====
 async function readLoop() {
 
-  // 將 byte stream 轉成文字
   const decoder = new TextDecoderStream();
   port.readable.pipeTo(decoder.writable);
-  
+
   reader = decoder.readable
-    .pipeThrough(new TransformStream({
-      transform(chunk, controller) {
-        chunk.split(/\r?\n/).forEach(line => {
-          controller.enqueue(line);
-        });
-      }
-    }))
+    .pipeThrough(new TransformStream(new LineBreakTransformer()))
     .getReader();
-  
+
   while (keepReading) {
     const { value, done } = await reader.read();
     if (done) break;
-    
-    // 解析 ESP32 Serial 輸出
-    if (/Voltage/.test(value))
-      temp.v = parseFloat(value.match(/[\d.]+/));
-   
-    if (/X_raw/.test(value))
-      temp.x = parseInt(value.match(/X_raw:\s*(\d+)/)[1]);
-      
-    if (/Y_raw/.test(value))
-      temp.y = parseInt(value.match(/Y_raw:\s*(\d+)/)[1]);
+    if (!value) continue;
 
-    if (/Z_raw/.test(value))
-      temp.z = parseInt(value.match(/Z_raw:\s*(\d+)/)[1]);
- console.log(temp.v);
- console.log(temp.x);
- console.log(temp.y);
- console.log(temp.z);
-     
+    console.log('RAW LINE:', value); // 👈 非常重要
+
+    // Voltage
+    if (value.startsWith('Voltage')) {
+      const m = value.match(/Voltage:\s*([\d.]+)/);
+      if (m) temp.v = parseFloat(m[1]);
+    }
+
+    // X
+    if (value.startsWith('X_raw')) {
+      const m = value.match(/X_raw:\s*(\d+)/);
+      if (m) temp.x = parseInt(m[1]);
+    }
+
+    // Y
+    if (value.startsWith('Y_raw')) {
+      const m = value.match(/Y_raw:\s*(\d+)/);
+      if (m) temp.y = parseInt(m[1]);
+    }
+
+    // Z
+    if (value.startsWith('Z_raw')) {
+      const m = value.match(/Z_raw:\s*(\d+)/);
+      if (m) temp.z = parseInt(m[1]);
+    }
+
+    console.log('PARSED:', temp);
     tryPushData();
   }
 }
+
+// async function readLoop() {
+
+//   // 將 byte stream 轉成文字
+//   const decoder = new TextDecoderStream();
+//   port.readable.pipeTo(decoder.writable);
+  
+//   reader = decoder.readable
+//     .pipeThrough(new TransformStream({
+//       transform(chunk, controller) {
+//         chunk.split(/\r?\n/).forEach(line => {
+//           controller.enqueue(line);
+//         });
+//       }
+//     }))
+//     .getReader();
+  
+//   while (keepReading) {
+//     const { value, done } = await reader.read();
+//     if (done) break;
+    
+//     // 解析 ESP32 Serial 輸出
+//     if (/Voltage/.test(value))
+//       temp.v = parseFloat(value.match(/[\d.]+/));
+   
+//     if (/X_raw/.test(value))
+//       temp.x = parseInt(value.match(/X_raw:\s*(\d+)/)[1]);
+      
+//     if (/Y_raw/.test(value))
+//       temp.y = parseInt(value.match(/Y_raw:\s*(\d+)/)[1]);
+
+//     if (/Z_raw/.test(value))
+//       temp.z = parseInt(value.match(/Z_raw:\s*(\d+)/)[1]);
+//  console.log(temp.v);
+//  console.log(temp.x);
+//  console.log(temp.y);
+//  console.log(temp.z);
+     
+//     tryPushData();
+//   }
+// }
 
 // ===== 連線按鈕 =====
 connectBtn.onclick = async () => {
