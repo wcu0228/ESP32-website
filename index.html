@@ -53,9 +53,15 @@ header {
 
 /* 主畫面三欄 */
 #main {
-  display:grid;
-  grid-template-columns: 1fr 1fr 220px;
-  gap:12px;
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 12px;
+}
+/* 左側示波器上下排列 */
+#charts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 canvas {
