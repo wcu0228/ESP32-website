@@ -76,7 +76,7 @@ const accelChart = new Chart(
 
 // ===== 暫存一組完整資料（避免不同步）=====
 let temp = { v:null, x:null, y:null, z:null };
-
+let frame = 0;
 // 嘗試將一整組資料推入示波器
 function tryPushData() {
 
@@ -91,9 +91,10 @@ function tryPushData() {
     zBuf.shift();   zBuf.push(temp.z);
 
     // 更新圖表
-    waveChart.update('none');
-    accelChart.update('none');
-
+   if (++frame % 3 === 0) {
+     waveChart.update('none');
+     accelChart.update('none');
+   }
     // ===== 計算音量 RMS（能量）=====
     const slice = micBuf.slice(-30);
     const rms = Math.sqrt(slice.reduce((s,v)=>s+v*v,0)/slice.length);
