@@ -5,25 +5,42 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>PIS-1274 即時示波器 + 音量條 (WebSerial)</title>
 
-<!-- Chart.js CDN -->
+<!-- Chart.js 繪圖套件（CDN） -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <style>
+    /* 整體頁面字型與背景 */
   body { font-family: system-ui, -apple-system, "Microsoft JhengHei", "Noto Sans TC", sans-serif; margin: 12px; background:#f6f8fb; color:#222; }
   header { display:flex; gap:12px; align-items:center; margin-bottom:10px; }
+  
+   /* 按鈕樣式 */
   .btn { padding:8px 12px; border-radius:8px; border:1px solid #ccc; background:white; cursor:pointer; }
   .btn.primary { background:#2563eb; color:white; border-color:#1e40af; }
   .btn.warn { background:#f97316; color:white; border-color:#c2410c; }
   .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  
+  /* 主畫面：左邊波形，右邊音量條 */
   #main { display:grid; grid-template-columns: 1fr 220px; gap:12px; align-items:start; }
+  
+  /* 卡片樣式 */
   .card { background:white; border-radius:10px; padding:10px; box-shadow: 0 6px 18px rgba(20,20,40,0.06); }
+  
+  /* 波形圖高度 */
   #chartWrap { height:360px; }
+  
+  /* 音量條區 */
   #meter { width: 100%; height: 200px; display:flex; align-items:center; justify-content:center; }
+  
+  /* 音量條背景 */
   #volBar { width: 60px; height: 160px; background:#eee; border-radius:8px; position:relative; overflow:hidden; }
+  
+  /* 音量填滿區（高度會依 RMS 改變） */
   #volFill { position:absolute; bottom:0; left:0; width:100%; height:0%; background:linear-gradient(180deg,#34d399,#60a5fa); display:flex; align-items:flex-end; justify-content:center; }
   #volText { margin-top:10px; font-weight:600; }
   .small { font-size:13px; color:#555; }
   footer { margin-top:12px; font-size:12px; color:#666; }
+  
+  /* 狀態文字 */
   #status { font-weight:600; color:#0b5; }
 </style>
 </head>
@@ -86,7 +103,7 @@
 
 <script>
 (async () => {
-  // UI elements
+  // ===== 取得畫面上的 UI 元件 =====
   const connectBtn = document.getElementById('connectBtn');
   const disconnectBtn = document.getElementById('disconnectBtn');
   const baudSelect = document.getElementById('baudSelect');
@@ -101,17 +118,20 @@
   const volFill = document.getElementById('volFill');
   const volText = document.getElementById('volText');
 
-  let port = null;
-  let reader = null;
+   // ===== Web Serial 相關狀態 =====
+  let port = null; // Serial Port 物件
+  let reader = null; // 讀取器
   let keepReading = false;
   let paused = false;
 
-  // Data buffer
+  // ===== 資料緩衝區 =====
   let maxSamples = parseInt(samplesInput.value, 10);
+  // 存放電壓資料（最新的在最後）
   let buffer = new Array(maxSamples).fill(0);
+  // 時間戳（目前未用，但保留擴充性）
   let timestamps = new Array(maxSamples).fill(0);
 
-  // Chart.js setup
+  // Chart.js 波形圖初始化
   const ctx = document.getElementById('waveChart').getContext('2d');
   const chartData = {
     labels: Array.from({length:buffer.length}, (_,i)=>i),
@@ -119,22 +139,23 @@
       label: 'Voltage (V)',
       data: buffer.slice(),
       borderWidth: 1,
-      pointRadius: 0,
+      pointRadius: 0, // 不顯示資料點
       borderColor: '#2563eb',
-      tension: 0.15,
+      tension: 0.15, // 平滑曲線
     }]
   };
+  // 建立折線圖
   const waveChart = new Chart(ctx, {
     type: 'line',
     data: chartData,
     options: {
-      animation: false,
+      animation: false, // 即時顯示，不用動畫
       responsive: true,
       maintainAspectRatio: false,
       elements: {line: {borderJoinStyle: 'round'}},
       scales: {
-        x: { display: false },
-        y: { min: 0, max: 3.3 }
+        x: { display: false },  // X 軸隱藏
+        y: { min: 0, max: 3.3 }  // ESP32 ADC 電壓範圍
       },
       plugins: {
         legend: { display: false }
@@ -164,7 +185,7 @@
     resizeBuffers(v);
   });
 
-  // Helper: parse float from incoming line (be tolerant)
+  //將序列資料轉成數字 ===== 從一行文字中解析出浮點數 =====
   function parseLineToFloat(line) {
     // remove non-numeric trailing chars, find first float-like token
     const m = line.match(/[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?/);
@@ -174,9 +195,10 @@
     return NaN;
   }
 
-  // RMS calculation over last N samples
+  // RMS 計算（音量條核心）===== 計算最近 N 筆資料的 RMS =====
   function computeRMS(window) {
     let sumSq = 0, count = 0;
+    // 從最新資料往回算
     for (let i=buffer.length - 1; i>=0 && count < window; i--, count++){
       const v = buffer[i];
       sumSq += v*v;
@@ -187,18 +209,27 @@
 
   // Update UI with a new sample
   function pushSample(v){
+    // 移除最舊資料
     buffer.shift();
+
+    // 加入最新資料
     buffer.push(v);
+    
+    // 計算 RMS
     const rms = computeRMS(parseInt(rmsWindowInput.value,10) || 30);
-    // update chart dataset
+    
+    // 更新波形
     waveChart.data.datasets[0].data = buffer.slice();
-    // update meter
+    
+    // 音量條高度（0 ~ 3.3V 對應 0~100%）
     const pct = Math.max(0, Math.min(1, rms / 3.3));
     volFill.style.height = (pct * 100) + '%';
     volText.textContent = rms.toFixed(3) + ' V';
-    // live info
+    
+    // 顯示即時數值
     liveValues.textContent = `最新：${v.toFixed(3)} V  |  RMS：${rms.toFixed(3)} V`;
-    // threshold style (if above threshold, flash color)
+    
+    // 門檻判斷（超過就變紅）
     const thr = parseFloat(thresholdInput.value) || 1.0;
     if (rms >= thr) {
       volFill.style.background = 'linear-gradient(180deg,#fb7185,#ef4444)'; // red
@@ -262,10 +293,13 @@
     connectBtn.disabled = false;
   });
 
-  // readLoop uses Streams API to get lines
+  // Web Serial 讀取核心
   async function readLoop() {
+    // 將 byte stream 轉成文字
     const textDecoder = new TextDecoderStream();
     const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+
+    // 依照換行切成一行一行
     const lineReader = textDecoder.readable
       .pipeThrough(new TransformStream(new LineBreakTransformer()))
       .getReader();
@@ -282,7 +316,7 @@
             if (!paused) pushSample(parsed);
           }
         }
-        // update chart every so often (Chart.js rerender)
+        // 立即更新圖表（無動畫）
         waveChart.update('none');
       }
     } catch (err) {
@@ -294,7 +328,7 @@
     }
   }
 
-  // LineBreakTransformer: helper to split stream into lines
+  // 將 Serial 資料切成「一行一筆」
   class LineBreakTransformer {
     constructor() { this.container = ''; }
     transform(chunk, controller) {
