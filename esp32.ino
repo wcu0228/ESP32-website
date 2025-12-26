@@ -1,4 +1,4 @@
-const int analogPin = 34;  // 麥克風
+const int micPin = 34;  // 麥克風
 #define X_PIN 35
 #define Y_PIN 32
 #define Z_PIN 33
@@ -7,11 +7,11 @@ void setup() {
   Serial.begin(115200);
 
   analogReadResolution(12);        // 0–4095
-  analogSetPinAttenuation(analogPin, ADC_11db);
+  analogSetPinAttenuation(micPin, ADC_11db);
 }
 
 void loop() {
-  int micRaw = analogRead(analogPin);
+  int micRaw = analogRead(micPin);
   float micV = micRaw * (3.3 / 4095.0);
 
   int xRaw = analogRead(X_PIN);
