@@ -112,20 +112,22 @@ canvas {
 <!-- ===== 主畫面 ===== -->
 <section id="main">
 
-  <!-- 麥克風電壓示波器 -->
-  <div class="card">
-    <b>麥克風電壓（ADC）</b>
-    <canvas id="waveChart"></canvas>
-    <div class="small" id="micText">0.00 V</div>
+  
+  <div id="charts">
+    <!-- 麥克風電壓示波器 -->
+    <div class="card">
+      <b>麥克風電壓（ADC）</b>
+      <canvas id="waveChart"></canvas>
+      <div class="small" id="micText">0.00 V</div>
+    </div>
+  
+    <!-- ADXL354 XYZ 三軸示波器 -->
+    <div class="card">
+      <b>ADXL354 三軸加速度（Raw ADC）</b>
+      <canvas id="accelChart"></canvas>
+      <div class="small" id="accelText">X:0 Y:0 Z:0</div>
+    </div>
   </div>
-
-  <!-- ADXL354 XYZ 三軸示波器 -->
-  <div class="card">
-    <b>ADXL354 三軸加速度（Raw ADC）</b>
-    <canvas id="accelChart"></canvas>
-    <div class="small" id="accelText">X:0 Y:0 Z:0</div>
-  </div>
-
   <!-- 音量 RMS 條 -->
   <div class="card" style="text-align:center">
     <b>聲音能量（RMS）</b>
