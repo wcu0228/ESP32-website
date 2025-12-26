@@ -117,7 +117,7 @@ async function readLoop() {
   // 將 byte stream 轉成文字
   const decoder = new TextDecoderStream();
   port.readable.pipeTo(decoder.writable);
-
+  
   reader = decoder.readable
     .pipeThrough(new TransformStream({
       transform(chunk, controller) {
@@ -127,11 +127,11 @@ async function readLoop() {
       }
     }))
     .getReader();
-
+  
   while (keepReading) {
     const { value, done } = await reader.read();
     if (done) break;
-
+    console.log(value);
     // 解析 ESP32 Serial 輸出
     if (/Voltage/.test(value))
       temp.v = parseFloat(value.match(/[\d.]+/));
