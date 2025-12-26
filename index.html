@@ -1,357 +1,138 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>PIS-1274 即時示波器 + 音量條 (WebSerial)</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PIS-1274 + ADXL354 即時示波器</title>
 
-<!-- Chart.js 繪圖套件（CDN） -->
+<!-- Chart.js 繪圖函式庫 -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <style>
-    /* 整體頁面字型與背景 */
-  body { font-family: system-ui, -apple-system, "Microsoft JhengHei", "Noto Sans TC", sans-serif; margin: 12px; background:#f6f8fb; color:#222; }
-  header { display:flex; gap:12px; align-items:center; margin-bottom:10px; }
-  
-   /* 按鈕樣式 */
-  .btn { padding:8px 12px; border-radius:8px; border:1px solid #ccc; background:white; cursor:pointer; }
-  .btn.primary { background:#2563eb; color:white; border-color:#1e40af; }
-  .btn.warn { background:#f97316; color:white; border-color:#c2410c; }
-  .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  
-  /* 主畫面：左邊波形，右邊音量條 */
-  #main { display:grid; grid-template-columns: 1fr 220px; gap:12px; align-items:start; }
-  
-  /* 卡片樣式 */
-  .card { background:white; border-radius:10px; padding:10px; box-shadow: 0 6px 18px rgba(20,20,40,0.06); }
-  
-  /* 波形圖高度 */
-  #chartWrap { height:360px; }
-  
-  /* 音量條區 */
-  #meter { width: 100%; height: 200px; display:flex; align-items:center; justify-content:center; }
-  
-  /* 音量條背景 */
-  #volBar { width: 60px; height: 160px; background:#eee; border-radius:8px; position:relative; overflow:hidden; }
-  
-  /* 音量填滿區（高度會依 RMS 改變） */
-  #volFill { position:absolute; bottom:0; left:0; width:100%; height:0%; background:linear-gradient(180deg,#34d399,#60a5fa); display:flex; align-items:flex-end; justify-content:center; }
-  #volText { margin-top:10px; font-weight:600; }
-  .small { font-size:13px; color:#555; }
-  footer { margin-top:12px; font-size:12px; color:#666; }
-  
-  /* 狀態文字 */
-  #status { font-weight:600; color:#0b5; }
+/* ===== 基本版面樣式 ===== */
+body {
+  font-family: system-ui, -apple-system, "Microsoft JhengHei";
+  background:#f6f8fb;
+  margin:12px;
+}
+
+header {
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+/* 卡片外觀（類似儀表板） */
+.card {
+  background:white;
+  border-radius:10px;
+  padding:10px;
+  box-shadow:0 6px 18px rgba(0,0,0,.06);
+}
+
+/* 上方控制列 */
+.controls {
+  display:flex;
+  gap:8px;
+  align-items:center;
+  margin:10px 0;
+}
+
+.btn {
+  padding:8px 12px;
+  border-radius:8px;
+  border:1px solid #ccc;
+  background:white;
+  cursor:pointer;
+}
+
+.btn.primary {
+  background:#2563eb;
+  color:white;
+}
+
+/* 主畫面三欄 */
+#main {
+  display:grid;
+  grid-template-columns: 1fr 1fr 220px;
+  gap:12px;
+}
+
+canvas {
+  width:100%;
+  height:320px;
+}
+
+/* 音量條 */
+#volBar {
+  width:60px;
+  height:160px;
+  background:#eee;
+  border-radius:8px;
+  margin:auto;
+  position:relative;
+  overflow:hidden;
+}
+
+#volFill {
+  position:absolute;
+  bottom:0;
+  width:100%;
+  height:0%;
+  background:linear-gradient(180deg,#34d399,#60a5fa);
+}
+
+.small {
+  font-size:13px;
+  color:#555;
+}
 </style>
 </head>
+
 <body>
 
 <header>
-  <h2 style="margin:0">PIS-1274 即時示波器 + 音量條</h2>
-  <div style="margin-left:8px" class="small">使用 Web Serial（Chrome / Edge）</div>
+  <h2>PIS-1274 + ADXL354 即時示波器</h2>
+  <div class="small">ESP32 Web Serial 即時監測</div>
 </header>
 
-<div class="controls card" style="display:flex; gap:8px; align-items:center;">
+<!-- ===== 連線控制 ===== -->
+<div class="controls card">
   <button id="connectBtn" class="btn primary">Connect</button>
   <button id="disconnectBtn" class="btn" disabled>Disconnect</button>
-  <label class="small">Baud:
-    <select id="baudSelect" class="btn" style="padding:6px 8px;">
-      <option>115200</option>
-      <option>9600</option>
-      <option>19200</option>
-      <option>38400</option>
-      <option>57600</option>
-    </select>
-  </label>
-  <label class="small">Samples:
-    <input id="samples" type="number" min="50" max="5000" value="600" style="width:80px;padding:6px;border-radius:6px;border:1px solid #ccc" />
-  </label>
-  <button id="pauseBtn" class="btn">Pause</button>
-  <button id="exportBtn" class="btn">Export CSV</button>
-  <div style="margin-left:auto" class="small">狀態：<span id="status">未連接</span></div>
+  <span class="small">狀態：<b id="status">未連接</b></span>
 </div>
 
+<!-- ===== 主畫面 ===== -->
 <section id="main">
+
+  <!-- 麥克風電壓示波器 -->
   <div class="card">
-    <div id="chartWrap">
-      <canvas id="waveChart"></canvas>
-    </div>
-    <div style="display:flex; gap:12px; margin-top:8px; align-items:center;">
-      <div class="small">RMS window: <input id="rmsWindow" type="number" min="1" max="500" value="30" style="width:70px;padding:4px;border-radius:6px;border:1px solid #ccc" /></div>
-      <div class="small">Threshold (V): <input id="threshold" type="number" step="0.01" value="1.0" style="width:70px;padding:4px;border-radius:6px;border:1px solid #ccc" /></div>
-      <div class="small" id="liveValues">最新：0.00 V  |  RMS：0.00 V</div>
-    </div>
+    <b>麥克風電壓（ADC）</b>
+    <canvas id="waveChart"></canvas>
+    <div class="small" id="micText">0.00 V</div>
   </div>
 
-  <div class="card" style="display:flex; flex-direction:column; gap:12px; align-items:center;">
-    <div style="font-weight:700">音量條 (RMS)</div>
-    <div id="meter">
-      <div id="volBar">
-        <div id="volFill"></div>
-      </div>
+  <!-- ADXL354 XYZ 三軸示波器 -->
+  <div class="card">
+    <b>ADXL354 三軸加速度（Raw ADC）</b>
+    <canvas id="accelChart"></canvas>
+    <div class="small" id="accelText">X:0 Y:0 Z:0</div>
+  </div>
+
+  <!-- 音量 RMS 條 -->
+  <div class="card" style="text-align:center">
+    <b>聲音能量（RMS）</b>
+    <div id="volBar">
+      <div id="volFill"></div>
     </div>
     <div id="volText">0.00 V</div>
-    <div style="width:100%;"><div class="small">說明：ESP32 請輸出每行一個電壓數字 (例如 0.523)</div></div>
   </div>
+
 </section>
 
-<footer>
-  <div>如何使用：<br>
-  1) 將 ESP32 程式設定為 Serial.println(voltage) 並上傳；2) 在此頁按 Connect；3) 選 COM port（baud 115200）；4) 波形即時顯示。<br>
-  若無法連接，請確認使用 Chrome/Edge，且從 localhost 或 https 提供此檔案。</div>
-</footer>
+<!-- 載入你的主程式 -->
+<script src="main.js"></script>
 
-<script>
-(async () => {
-  // ===== 取得畫面上的 UI 元件 =====
-  const connectBtn = document.getElementById('connectBtn');
-  const disconnectBtn = document.getElementById('disconnectBtn');
-  const baudSelect = document.getElementById('baudSelect');
-  const statusEl = document.getElementById('status');
-  const pauseBtn = document.getElementById('pauseBtn');
-  const samplesInput = document.getElementById('samples');
-  const rmsWindowInput = document.getElementById('rmsWindow');
-  const thresholdInput = document.getElementById('threshold');
-  const liveValues = document.getElementById('liveValues');
-  const exportBtn = document.getElementById('exportBtn');
-
-  const volFill = document.getElementById('volFill');
-  const volText = document.getElementById('volText');
-
-   // ===== Web Serial 相關狀態 =====
-  let port = null; // Serial Port 物件
-  let reader = null; // 讀取器
-  let keepReading = false;
-  let paused = false;
-
-  // ===== 資料緩衝區 =====
-  let maxSamples = parseInt(samplesInput.value, 10);
-  // 存放電壓資料（最新的在最後）
-  let buffer = new Array(maxSamples).fill(0);
-  // 時間戳（目前未用，但保留擴充性）
-  let timestamps = new Array(maxSamples).fill(0);
-
-  // Chart.js 波形圖初始化
-  const ctx = document.getElementById('waveChart').getContext('2d');
-  const chartData = {
-    labels: Array.from({length:buffer.length}, (_,i)=>i),
-    datasets: [{
-      label: 'Voltage (V)',
-      data: buffer.slice(),
-      borderWidth: 1,
-      pointRadius: 0, // 不顯示資料點
-      borderColor: '#2563eb',
-      tension: 0.15, // 平滑曲線
-    }]
-  };
-  // 建立折線圖
-  const waveChart = new Chart(ctx, {
-    type: 'line',
-    data: chartData,
-    options: {
-      animation: false, // 即時顯示，不用動畫
-      responsive: true,
-      maintainAspectRatio: false,
-      elements: {line: {borderJoinStyle: 'round'}},
-      scales: {
-        x: { display: false },  // X 軸隱藏
-        y: { min: 0, max: 3.3 }  // ESP32 ADC 電壓範圍
-      },
-      plugins: {
-        legend: { display: false }
-      }
-    }
-  });
-
-  function resizeBuffers(newLen) {
-    maxSamples = newLen;
-    const oldBuf = buffer.slice();
-    buffer = new Array(maxSamples).fill(0);
-    timestamps = new Array(maxSamples).fill(0);
-    // copy tail
-    for (let i=0;i<Math.min(oldBuf.length, buffer.length); i++){
-      buffer[buffer.length-1-i] = oldBuf[oldBuf.length-1-i];
-    }
-    waveChart.data.labels = Array.from({length:buffer.length}, (_,i)=>i);
-    waveChart.data.datasets[0].data = buffer.slice();
-    waveChart.update();
-  }
-
-  samplesInput.addEventListener('change', ()=> {
-    let v = parseInt(samplesInput.value,10) || 600;
-    if (v < 50) v = 50;
-    if (v > 5000) v = 5000;
-    samplesInput.value = v;
-    resizeBuffers(v);
-  });
-
-  //將序列資料轉成數字 ===== 從一行文字中解析出浮點數 =====
-  function parseLineToFloat(line) {
-    // remove non-numeric trailing chars, find first float-like token
-    const m = line.match(/[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?/);
-    if (m) {
-      return parseFloat(m[0]);
-    }
-    return NaN;
-  }
-
-  // RMS 計算（音量條核心）===== 計算最近 N 筆資料的 RMS =====
-  function computeRMS(window) {
-    let sumSq = 0, count = 0;
-    // 從最新資料往回算
-    for (let i=buffer.length - 1; i>=0 && count < window; i--, count++){
-      const v = buffer[i];
-      sumSq += v*v;
-    }
-    if (count === 0) return 0;
-    return Math.sqrt(sumSq / count);
-  }
-
-  // Update UI with a new sample
-  function pushSample(v){
-    // 移除最舊資料
-    buffer.shift();
-
-    // 加入最新資料
-    buffer.push(v);
-    
-    // 計算 RMS
-    const rms = computeRMS(parseInt(rmsWindowInput.value,10) || 30);
-    
-    // 更新波形
-    waveChart.data.datasets[0].data = buffer.slice();
-    
-    // 音量條高度（0 ~ 3.3V 對應 0~100%）
-    const pct = Math.max(0, Math.min(1, rms / 3.3));
-    volFill.style.height = (pct * 100) + '%';
-    volText.textContent = rms.toFixed(3) + ' V';
-    
-    // 顯示即時數值
-    liveValues.textContent = `最新：${v.toFixed(3)} V  |  RMS：${rms.toFixed(3)} V`;
-    
-    // 門檻判斷（超過就變紅）
-    const thr = parseFloat(thresholdInput.value) || 1.0;
-    if (rms >= thr) {
-      volFill.style.background = 'linear-gradient(180deg,#fb7185,#ef4444)'; // red
-      statusEl.textContent = 'Sound ⚠'; statusEl.style.color = '#c0262e';
-    } else {
-      volFill.style.background = 'linear-gradient(180deg,#34d399,#60a5fa)'; // green-blue
-      statusEl.textContent = 'Connected'; statusEl.style.color = '#0b5';
-    }
-  }
-
-  // Export current buffer to CSV
-  exportBtn.addEventListener('click', () => {
-    let csv = 'sample_index,voltage_V\n';
-    for (let i=0;i<buffer.length;i++){
-      csv += `${i},${buffer[i]}\n`;
-    }
-    const blob = new Blob([csv], {type:'text/csv'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'sound_data.csv';
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-  });
-
-  // Pause
-  pauseBtn.addEventListener('click', ()=> {
-    paused = !paused;
-    pauseBtn.textContent = paused ? 'Resume' : 'Pause';
-  });
-
-  // Connect / Disconnect
-  connectBtn.addEventListener('click', async () => {
-    try {
-      // request a port
-      port = await navigator.serial.requestPort();
-      await port.open({ baudRate: parseInt(baudSelect.value,10) });
-      statusEl.textContent = 'Connected'; statusEl.style.color = '#0b5';
-      disconnectBtn.disabled = false;
-      connectBtn.disabled = true;
-      keepReading = true;
-      readLoop();
-    } catch (e) {
-      console.error(e);
-      statusEl.textContent = '連接失敗';
-      statusEl.style.color = '#c0262e';
-    }
-  });
-
-  disconnectBtn.addEventListener('click', async () => {
-    keepReading = false;
-    paused = false;
-    pauseBtn.textContent = 'Pause';
-    try {
-      if (reader) { await reader.cancel(); reader = null; }
-      if (port) { await port.close(); port = null; }
-      statusEl.textContent = '已中斷'; statusEl.style.color = '#666';
-    } catch(e) {
-      console.warn(e);
-    }
-    disconnectBtn.disabled = true;
-    connectBtn.disabled = false;
-  });
-
-  // Web Serial 讀取核心
-  async function readLoop() {
-    // 將 byte stream 轉成文字
-    const textDecoder = new TextDecoderStream();
-    const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-
-    // 依照換行切成一行一行
-    const lineReader = textDecoder.readable
-      .pipeThrough(new TransformStream(new LineBreakTransformer()))
-      .getReader();
-
-    reader = lineReader;
-    try {
-      while (keepReading) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value) {
-          // value is one line (without newline)
-          const parsed = parseLineToFloat(value);
-          if (!isNaN(parsed)) {
-            if (!paused) pushSample(parsed);
-          }
-        }
-        // 立即更新圖表（無動畫）
-        waveChart.update('none');
-      }
-    } catch (err) {
-      console.error('readLoop error', err);
-      statusEl.textContent = '讀取錯誤';
-      statusEl.style.color = '#c0262e';
-    } finally {
-      try { reader.releaseLock(); } catch(e){}
-    }
-  }
-
-  // 將 Serial 資料切成「一行一筆」
-  class LineBreakTransformer {
-    constructor() { this.container = ''; }
-    transform(chunk, controller) {
-      this.container += chunk;
-      const lines = this.container.split(/\r?\n/);
-      this.container = lines.pop();
-      lines.forEach(line => controller.enqueue(line));
-    }
-    flush(controller) {
-      if (this.container) controller.enqueue(this.container);
-    }
-  }
-
-  // Feature detect
-  if (!('serial' in navigator)) {
-    alert('你的瀏覽器不支援 Web Serial API。請使用最新的 Chrome 或 Edge，並將此檔案使用 localhost 或 https 提供。');
-  }
-
-  // nice: allow paste of "raw: 123.45" lines etc
-  // initialize chart with zeros
-  waveChart.update();
-
-})();
-</script>
 </body>
 </html>
