@@ -1,62 +1,63 @@
 <!doctype html>
 <html lang="zh-Hant">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PIS-1274 + ADXL354 即時示波器</title>
-
-<!-- Chart.js 繪圖函式庫 -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <!--導入版面樣式 -->
-<link rel="stylesheet" type="text/css" href="style.css">
-</head>
-
-<body>
-
-<header>
-  <h2>PIS-1274 + ADXL354 即時示波器</h2>
-  <div class="small">ESP32 Web Serial 即時監測</div>
-</header>
-
-<!-- ===== 連線控制 ===== -->
-<div class="controls card">
-  <button id="connectBtn" class="btn primary">Connect</button>
-  <button id="disconnectBtn" class="btn" disabled>Disconnect</button>
-  <span class="small">狀態：<b id="status">未連接</b></span>
-</div>
-
-<!-- ===== 主畫面 ===== -->
-<section id="main">
-
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="/wcuicon.ico" type="image/x-icon" / >
+    <title>PIS-1274 + ADXL354 即時示波器</title>
+    
+    <!-- Chart.js 繪圖函式庫 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+      <!--導入版面樣式 -->
+    <link rel="stylesheet" type="text/css" href="style.css">
+  </head>
   
-  <div id="charts">
-    <!-- 麥克風電壓示波器 -->
-    <div class="card">
-      <b>麥克風電壓（ADC）</b>
-      <canvas id="waveChart"></canvas>
-      <div class="small" id="micText">0.00 V</div>
-    </div>
+  <body>
   
-    <!-- ADXL354 XYZ 三軸示波器 -->
-    <div class="card">
-      <b>ADXL354 三軸加速度（Raw ADC）</b>
-      <canvas id="accelChart"></canvas>
-      <div class="small" id="accelText">X:0 Y:0 Z:0</div>
+    <header>
+      <h2>PIS-1274 + ADXL354 即時示波器</h2>
+      <div class="small">ESP32 Web Serial 即時監測</div>
+    </header>
+    
+    <!-- ===== 連線控制 ===== -->
+    <div class="controls card">
+      <button id="connectBtn" class="btn primary">Connect</button>
+      <button id="disconnectBtn" class="btn" disabled>Disconnect</button>
+      <span class="small">狀態：<b id="status">未連接</b></span>
     </div>
-  </div>
-  <!-- 音量 RMS 條 -->
-  <div class="card" style="text-align:center">
-    <b>聲音能量（RMS）</b>
-    <div id="volBar">
-      <div id="volFill"></div>
-    </div>
-    <div id="volText">0.00 V</div>
-  </div>
-
-</section>
-
-<!-- 載入你的主程式 -->
-<script src="main.js"></script>
-
-</body>
+    
+    <!-- ===== 主畫面 ===== -->
+    <section id="main">
+    
+      
+      <div id="charts">
+        <!-- 麥克風電壓示波器 -->
+        <div class="card">
+          <b>麥克風電壓（ADC）</b>
+          <canvas id="waveChart"></canvas>
+          <div class="small" id="micText">0.00 V</div>
+        </div>
+      
+        <!-- ADXL354 XYZ 三軸示波器 -->
+        <div class="card">
+          <b>ADXL354 三軸加速度（Raw ADC）</b>
+          <canvas id="accelChart"></canvas>
+          <div class="small" id="accelText">X:0 Y:0 Z:0</div>
+        </div>
+      </div>
+      <!-- 音量 RMS 條 -->
+      <div class="card" style="text-align:center">
+        <b>聲音能量（RMS）</b>
+        <div id="volBar">
+          <div id="volFill"></div>
+        </div>
+        <div id="volText">0.00 V</div>
+      </div>
+    
+    </section>
+    
+    <!-- 載入你的主程式 -->
+    <script src="main.js"></script>
+  
+  </body>
 </html>
