@@ -131,20 +131,24 @@ async function readLoop() {
   while (keepReading) {
     const { value, done } = await reader.read();
     if (done) break;
-    console.log(value);
+    
     // 解析 ESP32 Serial 輸出
     if (/Voltage/.test(value))
       temp.v = parseFloat(value.match(/[\d.]+/));
-
+   
     if (/X_raw/.test(value))
       temp.x = parseInt(value.match(/X_raw:\s*(\d+)/)[1]);
-
+      
     if (/Y_raw/.test(value))
       temp.y = parseInt(value.match(/Y_raw:\s*(\d+)/)[1]);
 
     if (/Z_raw/.test(value))
       temp.z = parseInt(value.match(/Z_raw:\s*(\d+)/)[1]);
-
+ console.log(temp.v);
+ console.log(temp.x);
+ console.log(temp.y);
+ console.log(temp.z);
+     
     tryPushData();
   }
 }
