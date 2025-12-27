@@ -110,53 +110,9 @@ function tryPushData() {
     temp = { v:null, x:null, y:null, z:null };
   }
 }
+let lineBuffer = "";//累積 buffer 再切行
 
 // ===== Web Serial 讀取主迴圈 =====
-// async function readLoop() {
-
-//   const decoder = new TextDecoderStream();
-//   port.readable.pipeTo(decoder.writable);
-
-//   reader = decoder.readable
-//     .pipeThrough(new TransformStream(new LineBreakTransformer()))
-//     .getReader();
-
-//   while (keepReading) {
-//     const { value, done } = await reader.read();
-//     if (done) break;
-//     if (!value) continue;
-
-//     console.log('RAW LINE:', value); // 👈 非常重要
-
-//     // Voltage
-//     if (value.startsWith('Voltage')) {
-//       const m = value.match(/Voltage:\s*([\d.]+)/);
-//       if (m) temp.v = parseFloat(m[1]);
-//     }
-
-//     // X
-//     if (value.startsWith('X_raw')) {
-//       const m = value.match(/X_raw:\s*(\d+)/);
-//       if (m) temp.x = parseInt(m[1]);
-//     }
-
-//     // Y
-//     if (value.startsWith('Y_raw')) {
-//       const m = value.match(/Y_raw:\s*(\d+)/);
-//       if (m) temp.y = parseInt(m[1]);
-//     }
-
-//     // Z
-//     if (value.startsWith('Z_raw')) {
-//       const m = value.match(/Z_raw:\s*(\d+)/);
-//       if (m) temp.z = parseInt(m[1]);
-//     }
-
-//     console.log('PARSED:', temp);
-//     tryPushData();
-//   }
-// }
-
 async function readLoop() {
 
   // 將 byte stream 轉成文字
@@ -172,58 +128,42 @@ async function readLoop() {
       }
     }))
     .getReader();
-  
- //  while (keepReading) {
- //    const { value, done } = await reader.read();
- //    if (done) break;
-    
- //    // 解析 ESP32 Serial 輸出
- //    if (/Voltage/.test(value))
- //      temp.v = parseFloat(value.match(/[\d.]+/));
    
- //    if (/X_raw/.test(value))
- //      temp.x = parseInt(value.match(/X_raw:\s*(\d+)/)[1]);
-      
- //    if (/Y_raw/.test(value))
- //      temp.y = parseInt(value.match(/Y_raw:\s*(\d+)/)[1]);
-
- //    if (/Z_raw/.test(value))
- //      temp.z = parseInt(value.match(/Z_raw:\s*(\d+)/)[1]);
- // console.log(temp.v);
- // console.log(temp.x);
- // console.log(temp.y);
- // console.log(temp.z);
-     
- //    tryPushData();
- //  }
    while (keepReading) {
      const { value, done } = await reader.read();
      if (done) break;
    
-     // 去掉空白
-     const line = value.trim();
-     if (!line) continue;
+     // 累積資料（注意：value 可能只是半行）
+     lineBuffer += value;
    
-     // 用逗號分割
-     const parts = line.split(",");
+     // 只要 buffer 裡還有換行，就處理
+     let lines = lineBuffer.split(/\r?\n/);
    
-     // 確保格式正確（4 個欄位）
-     if (parts.length !== 4) {
-       console.warn("格式錯誤:", line);
-       continue;
+     // 最後一段可能是不完整的，留回 buffer
+     lineBuffer = lines.pop();
+   
+     // 處理「完整的行」
+     for (const line of lines) {
+       const clean = line.trim();
+       if (!clean) continue;
+   
+       const parts = clean.split(",");
+   
+       if (parts.length !== 4) {
+         console.warn("格式錯誤:", clean);
+         continue;
+       }
+   
+       temp.v = parseFloat(parts[0]);
+       temp.x = parseInt(parts[1]);
+       temp.y = parseInt(parts[2]);
+       temp.z = parseInt(parts[3]);
+   
+       console.log("micV:", temp.v);
+       console.log("X:", temp.x, "Y:", temp.y, "Z:", temp.z);
+   
+       tryPushData();
      }
-   
-     // 轉成數值
-     temp.v = parseFloat(parts[0]); // 麥克風電壓
-     temp.x = parseInt(parts[1]);   // ADXL354 X
-     temp.y = parseInt(parts[2]);   // ADXL354 Y
-     temp.z = parseInt(parts[3]);   // ADXL354 Z
-   
-     // Debug 用
-     console.log("micV:", temp.v);
-     console.log("X:", temp.x, "Y:", temp.y, "Z:", temp.z);
-   
-     tryPushData();
    }
 }
 
