@@ -127,7 +127,7 @@ async function readLoop() {
      if (done) break;
 
       buffer += value;
-      
+      console.log(value);
       let lines = buffer.split(/\r?\n/);
       buffer = lines.pop(); // 留下不完整的那一段
       for (const line of lines) {
