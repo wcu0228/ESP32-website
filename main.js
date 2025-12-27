@@ -110,61 +110,69 @@ function tryPushData() {
     temp = { v:null, x:null, y:null, z:null };
   }
 }
-let lineBuffer = "";//累積 buffer 再切行
+
 
 // ===== Web Serial 讀取主迴圈 =====
 async function readLoop() {
 
-  // 將 byte stream 轉成文字
+  // 將 byte stream 轉成文字 位元 → 文字
   const decoder = new TextDecoderStream();
   port.readable.pipeTo(decoder.writable);
   
-  reader = decoder.readable
-    .pipeThrough(new TransformStream({
-      transform(chunk, controller) {
-        chunk.split(/\r?\n/).forEach(line => {
-          controller.enqueue(line);
-        });
-      }
-    }))
-    .getReader();
+   const reader = decoder.readable.getReader();
+   let buffer = "";
    
    while (keepReading) {
      const { value, done } = await reader.read();
      if (done) break;
+
+      buffer += value;
+      
+      let lines = buffer.split(/\r?\n/);
+      buffer = lines.pop(); // 留下不完整的那一段
+      for (const line of lines) {
+         const clean = line.trim();
+         if (!clean) continue;
    
-     // 累積資料（注意：value 可能只是半行）
-     lineBuffer += value;
+         const parts = clean.split(",");
+         if (parts.length !== 4) {
+           console.warn("格式錯誤:", clean);
+           continue;
+         }
    
-     // 只要 buffer 裡還有換行，就處理
-     let lines = lineBuffer.split(/\r?\n/);
+         temp.v = parseFloat(parts[0]);
+         temp.x = parseInt(parts[1]);
+         temp.y = parseInt(parts[2]);
+         temp.z = parseInt(parts[3]);
    
-     // 最後一段可能是不完整的，留回 buffer
-     lineBuffer = lines.pop();
+         tryPushData();
+    }
+     // // 去掉空白
+     // const line = value.trim();
+     // if (!line) continue;
    
-     // 處理「完整的行」
-     for (const line of lines) {
-       const clean = line.trim();
-       if (!clean) continue;
+     // // 用逗號分割
+     // const parts = line.split(",");
    
-       const parts = clean.split(",");
+     // // 確保格式正確（4 個欄位）
+     // if (parts.length !== 4) {
+     //   console.warn("格式錯誤:", line);
+     //   continue;
+     // }
    
-       if (parts.length !== 4) {
-         console.warn("格式錯誤:", clean);
-         continue;
-       }
+     // // 轉成數值
+     // temp.v = parseFloat(parts[0]); // 麥克風電壓
+     // temp.x = parseInt(parts[1]);   // ADXL354 X
+     // temp.y = parseInt(parts[2]);   // ADXL354 Y
+     // temp.z = parseInt(parts[3]);   // ADXL354 Z
    
-       temp.v = parseFloat(parts[0]);
-       temp.x = parseInt(parts[1]);
-       temp.y = parseInt(parts[2]);
-       temp.z = parseInt(parts[3]);
+     // // Debug 用
+     // console.log("micV:", temp.v);
+     // console.log("X:", temp.x, "Y:", temp.y, "Z:", temp.z);
    
-       console.log("micV:", temp.v);
-       console.log("X:", temp.x, "Y:", temp.y, "Z:", temp.z);
-   
-       tryPushData();
-     }
+     // tryPushData();
    }
+
 }
 
 // ===== 連線按鈕 =====
