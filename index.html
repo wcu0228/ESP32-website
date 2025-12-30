@@ -5,31 +5,53 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="wcuicon.ico" type="image/x-icon" / >
     <title>PIS-1274 + ADXL354 即時示波器</title>
-    
+
     <!-- Chart.js 繪圖函式庫 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
       <!--導入版面樣式 -->
     <link rel="stylesheet" type="text/css" href="style.css">
   </head>
-  
+
   <body>
-  
+
     <header>
       <h2>PIS-1274 + ADXL354 即時示波器</h2>
       <div class="small">ESP32 Web Serial 即時監測</div>
     </header>
-    
+
     <!-- ===== 連線控制 ===== -->
     <div class="controls card">
       <button id="connectBtn" class="btn primary">Connect</button>
       <button id="disconnectBtn" class="btn" disabled>Disconnect</button>
-      <span class="small">狀態：<b id="status">未連接</b></span>
+      <label class="small">Baud:
+        <select id="baudSelect" class="btn" style="padding:6px 8px;">
+          <option>115200</option>
+          <option>9600</option>
+          <option>19200</option>
+          <option>38400</option>
+          <option>57600</option>
+        </select>
+      </label>
+      <label class="small">Samples:
+        <input id="samples" type="number" min="50" max="5000" value="600" style="width:80px;padding:6px;border-radius:6px;border:1px solid #ccc" />
+      </label>
+      <button id="pauseBtn" class="btn">Pause</button>
+      <button id="exportBtn" class="btn">Export CSV</button>
+      <div class="small">
+        顯示頻道：
+        <label><input type="checkbox" id="chMic" checked> Mic</label>
+        <label><input type="checkbox" id="chX" checked> X</label>
+        <label><input type="checkbox" id="chY" checked> Y</label>
+        <label><input type="checkbox" id="chZ" checked> Z</label>
+      </div>
+      <div style="margin-left:auto" class="small">狀態：<span id="status">未連接</span></div>
     </div>
-    
+
+
     <!-- ===== 主畫面 ===== -->
     <section id="main">
-    
-      
+
+
       <div id="charts">
         <!-- 麥克風電壓示波器 -->
         <div class="card">
@@ -37,7 +59,7 @@
           <canvas id="waveChart"></canvas>
           <div class="small" id="micText">0.00 V</div>
         </div>
-      
+
         <!-- ADXL354 XYZ 三軸示波器 -->
         <div class="card">
           <b>ADXL354 三軸加速度（Raw ADC）</b>
@@ -53,11 +75,11 @@
         </div>
         <div id="volText">0.00 V</div>
       </div>
-    
+
     </section>
-    
+
     <!-- 載入你的主程式 -->
     <script src="main.js"></script>
-  
+
   </body>
 </html>
